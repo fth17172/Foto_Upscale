@@ -11,13 +11,41 @@ export default function Home() {
   const [customWidth, setCustomWidth] = useState<number | ''>('');
   const [customHeight, setCustomHeight] = useState<number | ''>('');
 
+  // Görseli Vercel limitlerine uydurmak için tarayıcıda optimize et
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImage(reader.result as string);
-        setEnhancedImage(null);
+        const img = new Image();
+        img.src = reader.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          
+          // Maksimum 2048px genişlik sınırı (Vercel 404/413 patlamasını önler)
+          const MAX_SIZE = 2048;
+          if (width > MAX_SIZE || height > MAX_SIZE) {
+            if (width > height) {
+              height *= MAX_SIZE / width;
+              width = MAX_SIZE;
+            } else {
+              width *= MAX_SIZE / height;
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+
+          // JPEG formatında %85 kaliteyle sıkıştırıp gönder
+          const optimizedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+          setImage(optimizedBase64);
+          setEnhancedImage(null);
+        };
       };
       reader.readAsDataURL(file);
     }
@@ -35,13 +63,14 @@ export default function Home() {
       });
 
       const data = await res.json();
-      if (data.enhancedImageUrl) {
+      
+      if (res.ok && data.enhancedImageUrl) {
         setEnhancedImage(data.enhancedImageUrl);
       } else {
-        alert('Netleştirme sırasında hata oluştu.');
+        alert(`Hata: ${data.error || 'Netleştirme yapılamadı.'}`);
       }
     } catch (err) {
-      alert('Sunucuya bağlanılamadı!');
+      alert('Vercel sunucusu yanıt vermedi veya zaman aşımına uğradı.');
     } finally {
       setLoading(false);
     }
@@ -73,7 +102,6 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black text-white p-4 md:p-10 flex flex-col items-center justify-between">
-      {/* Header */}
       <header className="w-full max-w-4xl text-center space-y-2 mt-4">
         <div className="inline-block px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold tracking-wide uppercase mb-2">
           PWA & AI Powered
@@ -86,7 +114,6 @@ export default function Home() {
         </p>
       </header>
 
-      {/* Ana Kart / Controls */}
       <section className="w-full max-w-xl my-8 bg-slate-900/60 backdrop-blur-xl p-5 md:p-8 rounded-3xl border border-slate-800 shadow-2xl space-y-6">
         <div className="relative border-2 border-dashed border-slate-700 hover:border-blue-500 transition rounded-2xl p-6 text-center cursor-pointer group bg-slate-950/40">
           <input
@@ -100,7 +127,7 @@ export default function Home() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <p className="text-sm text-slate-300 font-medium">
-              {image ? 'Görsel Seçildi (Değiştirmek için tıkla)' : 'Fotoğraf Yükle veya Sürükle'}
+              {image ? 'Görsel Hazırlandı (Değiştirmek için tıkla)' : 'Fotoğraf Yükle veya Sürükle'}
             </p>
           </div>
         </div>
@@ -132,7 +159,6 @@ export default function Home() {
         )}
       </section>
 
-      {/* Result & Compare Section */}
       {image && enhancedImage && (
         <section className="w-full max-w-4xl space-y-6 mb-12 animate-fade-in">
           <div className="overflow-hidden rounded-3xl border border-slate-800 shadow-2xl bg-slate-900">
@@ -145,7 +171,6 @@ export default function Home() {
             />
           </div>
 
-          {/* Controls & Download */}
           <div className="bg-slate-900/80 backdrop-blur-md p-5 rounded-2xl border border-slate-800 flex flex-col md:flex-row gap-4 items-center justify-between">
             <div className="flex items-center gap-2 w-full md:w-auto justify-center">
               <input
@@ -175,7 +200,6 @@ export default function Home() {
         </section>
       )}
 
-      {/* Footer */}
       <footer className="text-xs text-slate-600 text-center py-4">
         Vercel Edge & Replicate AI tarafından desteklenmektedir.
       </footer>
